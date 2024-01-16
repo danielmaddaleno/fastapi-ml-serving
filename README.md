@@ -60,3 +60,12 @@ docker compose up --build
 ## License
 
 MIT
+
+
+## Installation
+
+```bash
+git clone https://github.com/danielmaddaleno/fastapi-ml-serving.git
+cd fastapi-ml-serving
+pip install -r requirements.txt
+```
