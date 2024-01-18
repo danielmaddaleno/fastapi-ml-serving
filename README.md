@@ -69,3 +69,7 @@ git clone https://github.com/danielmaddaleno/fastapi-ml-serving.git
 cd fastapi-ml-serving
 pip install -r requirements.txt
 ```
+
+## Usage
+
+See `docs/` for detailed examples.
