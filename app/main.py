@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """FastAPI ML serving application."""
 
 from contextlib import asynccontextmanager
