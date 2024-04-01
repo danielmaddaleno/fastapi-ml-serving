@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Dummy model for testing – returns the mean of the feature vector."""
 
 import numpy as np
