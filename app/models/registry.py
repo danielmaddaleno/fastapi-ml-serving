@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Model registry – load, cache, and version ML models."""
 
 from __future__ import annotations
