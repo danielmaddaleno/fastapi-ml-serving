@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Health & readiness probes."""
 
 from fastapi import APIRouter, Request
