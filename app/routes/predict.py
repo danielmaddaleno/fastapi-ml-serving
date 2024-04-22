@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Prediction endpoint."""
 
 import time
