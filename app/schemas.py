@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Pydantic request / response schemas."""
 
 from pydantic import BaseModel, Field
