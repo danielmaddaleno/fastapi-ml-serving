@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Config — core implementation."""
 """Application configuration via environment variables."""
 
 from pydantic_settings import BaseSettings
