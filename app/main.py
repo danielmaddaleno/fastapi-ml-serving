@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Main — core implementation."""
 """FastAPI ML serving application."""
 
 from contextlib import asynccontextmanager
