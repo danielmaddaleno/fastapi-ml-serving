@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Metrics — core implementation."""
 """Lightweight Prometheus-style metrics middleware."""
 
 from __future__ import annotations
