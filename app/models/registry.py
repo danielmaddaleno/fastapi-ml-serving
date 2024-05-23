@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Registry — core implementation."""
 """Model registry – load, cache, and version ML models."""
 
 from __future__ import annotations
