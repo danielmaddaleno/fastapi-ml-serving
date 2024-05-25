@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Predict — core implementation."""
 """Prediction endpoint."""
 
 import time
