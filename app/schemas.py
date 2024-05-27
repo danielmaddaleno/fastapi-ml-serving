@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Schemas — core implementation."""
 """Pydantic request / response schemas."""
 
 from pydantic import BaseModel, Field
