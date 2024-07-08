@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Config — core implementation."""
 """Application configuration via environment variables."""
 
