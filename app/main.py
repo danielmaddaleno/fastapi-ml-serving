@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Main — core implementation."""
 """FastAPI ML serving application."""
 
