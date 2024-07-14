@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Dummy — core implementation."""
 """Dummy model for testing – returns the mean of the feature vector."""
 
