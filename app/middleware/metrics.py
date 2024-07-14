@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Metrics — core implementation."""
 """Lightweight Prometheus-style metrics middleware."""
 
