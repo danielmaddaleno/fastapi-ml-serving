@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Registry — core implementation."""
 """Model registry – load, cache, and version ML models."""
 
