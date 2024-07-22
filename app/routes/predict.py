@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Predict — core implementation."""
 """Prediction endpoint."""
 
