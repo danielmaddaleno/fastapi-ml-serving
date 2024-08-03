@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Author: Daniel Maddaleno
 """Schemas — core implementation."""
 """Pydantic request / response schemas."""
 
