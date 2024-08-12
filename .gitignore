@@ -7,3 +7,9 @@ build/
 .env
 .pytest_cache/
 artifacts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
