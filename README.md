@@ -1,3 +1,6 @@
+![Tests](https://github.com/danielmaddaleno/fastapi-ml-serving/actions/workflows/tests.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 # 🚀 fastapi-ml-serving
 
 Production-ready template for serving ML models behind a FastAPI service with async inference, health checks, Prometheus metrics, and Docker support.
