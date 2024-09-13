@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Test Health — automated test suite."""
 """Tests for health & readiness endpoints."""
 
 import pytest
