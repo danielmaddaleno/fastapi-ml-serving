@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Test Predict — automated test suite."""
 """Tests for the /predict endpoint."""
 
 import pytest
