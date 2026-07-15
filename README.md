@@ -163,7 +163,8 @@ make format        # black + isort
 - No auth on `/reload`. It only re-reads a path already loaded at startup,
   but that's still an unauthenticated POST in a demo service; add a check
   before using this pattern for anything real.
-- No request size limit, a huge feature vector is accepted and processed as is.
+- No request size limit. A large feature vector is accepted and processed
+  as-is; put a cap in front of this before exposing it.
 
 ## License
 
