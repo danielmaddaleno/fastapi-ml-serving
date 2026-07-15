@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+.pytest_cache/
+artifacts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage & dist
+htmlcov/
+.coverage
+coverage.xml
+dist/
+build/
+*.egg-info/

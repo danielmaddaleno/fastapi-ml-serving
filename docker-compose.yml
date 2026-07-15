@@ -1,0 +1,16 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ML_LOG_LEVEL=INFO
+    volumes:
+      # Run scripts/train_toy_model.py on the host first, or this mount is
+      # an empty dir and the API serves the built-in dummy model instead.
+      - ./artifacts:/app/artifacts:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

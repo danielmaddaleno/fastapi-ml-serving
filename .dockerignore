@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+.env
+.venv
+*.md
+tests/
+docs/
+.github/
+.editorconfig
+.pre-commit-config.yaml
+Makefile
