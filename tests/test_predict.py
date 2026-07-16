@@ -23,6 +23,21 @@ async def test_predict_empty_features(app):
 
 
 @pytest.mark.anyio
+async def test_predict_non_finite_features_rejected(app):
+    # Infinity/NaN can only arrive as raw JSON literals (json.loads accepts
+    # them). The validator rejects the vector, and the response must stay a
+    # clean 422 rather than crashing the error handler while echoing "inf".
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/predict",
+            content='{"features": [1.0, Infinity]}',
+            headers={"content-type": "application/json"},
+        )
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "features"]
+
+
+@pytest.mark.anyio
 async def test_predict_unknown_version(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
