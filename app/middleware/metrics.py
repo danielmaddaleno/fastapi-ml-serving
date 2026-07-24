@@ -11,6 +11,18 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp
 
 
+def _escape_label_value(value: str) -> str:
+    """Escape a string for use as a Prometheus label value.
+
+    The exposition format requires backslash, double-quote, and newline to be
+    escaped inside a label value. Request paths can legitimately contain a
+    double-quote (e.g. a probe hitting ``/pre"dict``), and interpolating one
+    raw would close the ``endpoint="..."`` quote early and corrupt the whole
+    ``/metrics`` payload, so every scrape after it fails to parse.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Collects request count and cumulative latency per endpoint.
 
@@ -46,13 +58,15 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             "# TYPE http_requests_total counter",
         ]
         for label, count in self._request_count.items():
-            lines.append(f'http_requests_total{{endpoint="{label}"}} {count}')
+            lines.append(f'http_requests_total{{endpoint="{_escape_label_value(label)}"}} {count}')
 
         lines += [
             "# HELP http_request_latency_seconds_sum Cumulative latency",
             "# TYPE http_request_latency_seconds_sum counter",
         ]
         for label, total in self._latency_sum.items():
-            lines.append(f'http_request_latency_seconds_sum{{endpoint="{label}"}} {total:.6f}')
+            lines.append(
+                f'http_request_latency_seconds_sum{{endpoint="{_escape_label_value(label)}"}} {total:.6f}'
+            )
 
         return PlainTextResponse("\n".join(lines) + "\n")

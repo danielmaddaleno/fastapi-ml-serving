@@ -3,6 +3,17 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.middleware.metrics import _escape_label_value
+
+
+def test_escape_label_value_escapes_prometheus_special_chars():
+    # A path with a double-quote would otherwise close the endpoint="..."
+    # label early and corrupt every following line of the scrape.
+    assert _escape_label_value('GET_/pre"dict') == 'GET_/pre\\"dict'
+    assert _escape_label_value("GET_/a\\b") == "GET_/a\\\\b"
+    assert _escape_label_value("GET_/a\nb") == "GET_/a\\nb"
+    assert _escape_label_value("GET_/health") == "GET_/health"
+
 
 @pytest.mark.anyio
 async def test_metrics_returns_prometheus_text(app):
