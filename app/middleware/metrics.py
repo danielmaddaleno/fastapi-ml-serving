@@ -65,8 +65,6 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             "# TYPE http_request_latency_seconds_sum counter",
         ]
         for label, total in self._latency_sum.items():
-            lines.append(
-                f'http_request_latency_seconds_sum{{endpoint="{_escape_label_value(label)}"}} {total:.6f}'
-            )
+            lines.append(f'http_request_latency_seconds_sum{{endpoint="{_escape_label_value(label)}"}} {total:.6f}')
 
         return PlainTextResponse("\n".join(lines) + "\n")
