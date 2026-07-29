@@ -48,6 +48,26 @@ async def test_predict_unknown_version(app):
 
 
 @pytest.mark.anyio
+async def test_predict_wrong_feature_count_is_422(app, tmp_path):
+    # Load a real model that expects a fixed number of features (the breast
+    # cancer pipeline expects 30), then send a vector of the wrong length.
+    # sklearn raises ValueError, which the route should surface as a 422
+    # client error rather than a 500.
+    from scripts.train_toy_model import train
+
+    model_path = tmp_path / "model.joblib"
+    train(model_path, random_state=0)
+    app.state.registry.load("production", model_path)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/predict",
+            json={"features": [1.0, 2.0, 3.0], "model_version": "production"},
+        )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
 async def test_reload_unknown_version(app):
     # "dummy" was built in memory, not loaded from a file, so there is
     # nothing on disk to re-read.
