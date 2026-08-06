@@ -1,11 +1,14 @@
 """Prediction and model-reload endpoints."""
 
 import asyncio
+import logging
 import time
 
 from fastapi import APIRouter, HTTPException, Request
 
 from app.schemas import PredictionRequest, PredictionResponse, ReloadResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -26,8 +29,12 @@ async def predict(request: Request, payload: PredictionRequest):
         # the model expects (most often the wrong number of features). That is
         # a client input problem, so surface it as a 422 rather than a 500.
         raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        # Anything past the KeyError/ValueError cases above is unexpected. Log
+        # it server-side for debugging, but do not echo the raw exception text
+        # back to the client, since it can expose internal details.
+        logger.exception("Unexpected error during inference")
+        raise HTTPException(status_code=500, detail="Internal error during inference")
 
     latency_ms = (time.perf_counter() - start) * 1000
     return PredictionResponse(
