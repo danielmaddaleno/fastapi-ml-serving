@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import time
 
 from fastapi import APIRouter, HTTPException, Request
@@ -35,6 +36,16 @@ async def predict(request: Request, payload: PredictionRequest):
         # back to the client, since it can expose internal details.
         logger.exception("Unexpected error during inference")
         raise HTTPException(status_code=500, detail="Internal error during inference")
+
+    if not math.isfinite(prediction):
+        # A model can emit NaN/inf under numerical instability even when the
+        # input vector is finite. Pydantic serializes such a value to JSON
+        # null, so the client would get a 200 with prediction=null and no
+        # signal that anything went wrong. Surface it as a server error
+        # instead of handing back a silent bad answer.
+        version = payload.model_version or registry.default_version
+        logger.error("Model %s produced a non-finite prediction", version)
+        raise HTTPException(status_code=500, detail="Model produced a non-finite prediction")
 
     latency_ms = (time.perf_counter() - start) * 1000
     return PredictionResponse(
