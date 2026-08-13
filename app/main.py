@@ -1,5 +1,6 @@
 """FastAPI ML serving application."""
 
+import logging
 import math
 from contextlib import asynccontextmanager
 
@@ -49,7 +50,21 @@ async def lifespan(app: FastAPI):
     registry.unload_all()
 
 
+def _configure_logging() -> None:
+    """Apply the configured ``ML_LOG_LEVEL`` to the ``app`` package logger.
+
+    Our modules log via ``logging.getLogger(__name__)`` (all children of the
+    ``app`` logger), but nothing was reading ``settings.log_level``, so the
+    setting had no effect. Set the level on the parent logger so the children
+    inherit it. An unrecognized level name falls back to INFO rather than
+    raising at startup.
+    """
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.getLogger("app").setLevel(level)
+
+
 def create_app() -> FastAPI:
+    _configure_logging()
     app = FastAPI(
         title="ML Serving API",
         version="0.1.0",
