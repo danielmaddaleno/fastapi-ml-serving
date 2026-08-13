@@ -81,3 +81,23 @@ def test_unload_all_clears_paths_too(trained_model_path):
 
     assert not registry.is_ready
     assert registry.reload("production") is False
+
+
+def test_predict_unknown_version_raises_keyerror():
+    registry = ModelRegistry()
+    registry.load_default()
+
+    # The /predict route relies on this KeyError to answer 404 for a pinned
+    # version that was never loaded; a different exception type would leak
+    # through as a 500 instead.
+    with pytest.raises(KeyError):
+        registry.predict([1.0, 2.0], version="nonexistent")
+
+
+def test_predict_with_no_models_raises_keyerror():
+    registry = ModelRegistry()
+
+    # Before any model is loaded there is no default version to fall back on,
+    # so an unqualified predict must fail loudly rather than dereference None.
+    with pytest.raises(KeyError):
+        registry.predict([1.0, 2.0])
