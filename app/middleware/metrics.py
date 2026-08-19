@@ -45,7 +45,15 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         elapsed = time.perf_counter() - start
 
-        label = f"{request.method}_{request.url.path}"
+        # Label by the matched route template (e.g. "/predict"), which the
+        # router records on the scope during call_next, rather than the raw
+        # request path. An unmatched request (404) has no route, so bucket all
+        # of them under one label instead of minting a fresh Prometheus time
+        # series per URL. Otherwise anyone probing random paths would grow the
+        # /metrics payload without bound and slow every scrape.
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", None) or "<unmatched>"
+        label = f"{request.method}_{endpoint}"
         self._request_count[label] += 1
         self._latency_sum[label] += elapsed
 
