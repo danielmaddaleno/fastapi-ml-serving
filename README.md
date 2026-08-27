@@ -145,7 +145,7 @@ host and restarting the container is enough to pick up a new model.
 make install-dev  # requirements-dev.txt + editable install
 make train         # writes artifacts/model.joblib
 make test          # pytest -v
-make lint          # flake8 + mypy
+make lint          # black --check + flake8 + mypy
 make format        # black + isort
 ```
 

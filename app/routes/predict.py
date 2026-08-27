@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.post("/predict", response_model=PredictionResponse)
-async def predict(request: Request, payload: PredictionRequest):
+async def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
     registry = request.app.state.registry
     start = time.perf_counter()
     try:
@@ -56,7 +56,7 @@ async def predict(request: Request, payload: PredictionRequest):
 
 
 @router.post("/reload", response_model=ReloadResponse)
-async def reload_model(request: Request, version: str = "production"):
+async def reload_model(request: Request, version: str = "production") -> ReloadResponse:
     """Re-read a model from disk without restarting the process.
 
     Lets you retrain and drop a new `artifacts/model.joblib` in place, then

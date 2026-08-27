@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(request: Request):
+async def health(request: Request) -> HealthResponse:
     registry = request.app.state.registry
     return HealthResponse(
         status="ok",
@@ -19,7 +19,7 @@ async def health(request: Request):
 
 
 @router.get("/ready")
-async def ready(request: Request):
+async def ready(request: Request) -> JSONResponse:
     # A readiness probe has to signal not-ready with a non-2xx status, or the
     # orchestrator (k8s) reads any 200 as "ready" and keeps routing traffic to
     # a pod whose model has not loaded. Return 503 until the registry is ready.

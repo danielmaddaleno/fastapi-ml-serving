@@ -2,7 +2,9 @@
 
 import logging
 import math
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -15,7 +17,7 @@ from app.models.registry import ModelRegistry
 from app.routes import health, predict
 
 
-def _stringify_non_finite(obj):
+def _stringify_non_finite(obj: Any) -> Any:
     """Recursively replace inf/NaN floats with their string form.
 
     A non-finite float can only reach us as a raw JSON ``Infinity``/``NaN``
@@ -34,13 +36,16 @@ def _stringify_non_finite(obj):
     return obj
 
 
-async def _validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    errors = _stringify_non_finite(jsonable_encoder(exc.errors()))
+async def _validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Starlette types every handler as taking a bare Exception, so the
+    # narrowing happens here rather than in the signature.
+    validation_exc = cast(RequestValidationError, exc)
+    errors = _stringify_non_finite(jsonable_encoder(validation_exc.errors()))
     return JSONResponse(status_code=422, content={"detail": errors})
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Load the built-in dummy model, then the trained artifact if present."""
     registry = ModelRegistry()
     registry.load_default()

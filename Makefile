@@ -17,8 +17,9 @@ test:
 	pytest tests/ -v --tb=short
 
 lint:
+	black --check .
 	flake8 . --max-line-length=120
-	mypy . --ignore-missing-imports
+	mypy app
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
