@@ -10,6 +10,10 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Version the built-in dummy model is registered under. It is a stand-in that
+# keeps the service answering, not something to route real traffic to.
+FALLBACK_VERSION = "dummy"
+
 
 class Predictor(Protocol):
     """Any object that exposes a sklearn-style predict method."""
@@ -46,8 +50,8 @@ class ModelRegistry:
         from app.models.dummy import DummyModel
 
         dummy = DummyModel()
-        self._models["dummy"] = dummy
-        self._default_version = "dummy"
+        self._models[FALLBACK_VERSION] = dummy
+        self._default_version = FALLBACK_VERSION
         logger.info("Loaded built-in dummy model")
 
     def load_if_present(self, version: str, path: str | Path) -> bool:
@@ -87,7 +91,13 @@ class ModelRegistry:
 
     @property
     def is_ready(self) -> bool:
-        return len(self._models) > 0
+        """True once a model other than the built-in fallback is loaded.
+
+        The fallback is loaded at startup and never unloaded, so counting it
+        here would make the readiness probe answer 200 unconditionally, which
+        defeats the point of having one.
+        """
+        return any(version != FALLBACK_VERSION for version in self._models)
 
     @property
     def default_version(self) -> str:

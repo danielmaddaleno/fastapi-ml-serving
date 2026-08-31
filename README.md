@@ -23,6 +23,10 @@ vector) under version `"dummy"`. Run it and you also get a real
 `LogisticRegression` fit on scikit-learn's breast cancer dataset, loaded as
 version `"production"`.
 
+Until that artifact loads, `/ready` answers 503. The dummy keeps `/predict`
+and `/health` responding so you can look at the service, but it is not a
+model to route traffic to, so the readiness probe does not count it.
+
 ```bash
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
@@ -44,8 +48,8 @@ curl -X POST http://localhost:8000/predict \
 
 | Method | Path | What it does |
 |---|---|---|
-| `GET` | `/health` | Status, whether a model is loaded, the default model version |
-| `GET` | `/ready` | Plain readiness boolean, for k8s probes |
+| `GET` | `/health` | Liveness: always 200, plus whether the trained model is loaded and the default version |
+| `GET` | `/ready` | 200 once the trained model is loaded, 503 before that |
 | `POST` | `/predict` | Run inference, optionally pinning `model_version` |
 | `POST` | `/reload?version=production` | Re-read a model from its original file path, no restart |
 | `GET` | `/metrics` | Request counts and cumulative latency, Prometheus text format |

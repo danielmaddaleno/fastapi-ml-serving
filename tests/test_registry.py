@@ -37,6 +37,15 @@ def test_load_real_model(trained_model_path):
     assert prediction in (0.0, 1.0)
 
 
+def test_dummy_alone_is_not_ready():
+    registry = ModelRegistry()
+    registry.load_default()
+
+    # The dummy is a fallback that is always in memory. If it counted as
+    # ready, /ready would answer 200 for a process with no real model.
+    assert registry.is_ready is False
+
+
 def test_load_if_present_missing_file(tmp_path):
     registry = ModelRegistry()
     missing = tmp_path / "does-not-exist.joblib"
