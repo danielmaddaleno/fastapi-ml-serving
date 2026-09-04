@@ -19,7 +19,9 @@ async def test_health(app):
 async def test_health_reports_the_trained_model(app_with_model):
     async with AsyncClient(transport=ASGITransport(app=app_with_model), base_url="http://test") as client:
         resp = await client.get("/health")
-    assert resp.json()["model_loaded"] is True
+    data = resp.json()
+    assert data["model_loaded"] is True
+    assert data["version"] == "production"
 
 
 @pytest.mark.anyio

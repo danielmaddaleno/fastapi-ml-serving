@@ -41,7 +41,9 @@ class ModelRegistry:
         model = joblib.load(path)
         self._models[version] = model
         self._paths[version] = Path(path)
-        if self._default_version is None:
+        if self._default_version is None or self._default_version == FALLBACK_VERSION:
+            # A model loaded from disk outranks the fallback, so requests that
+            # do not pin a version stop being answered by the dummy.
             self._default_version = version
         logger.info("Loaded model v%s from %s", version, path)
 

@@ -10,6 +10,7 @@ clone before anyone has run the training script.
 from pathlib import Path
 
 import pytest
+from sklearn.datasets import load_breast_cancer
 
 from app.models.registry import ModelRegistry
 from scripts.train_toy_model import train
@@ -63,6 +64,21 @@ def test_load_if_present_existing_file(trained_model_path):
 
     assert loaded is True
     assert registry.default_version == "production"
+
+
+def test_loaded_artifact_takes_over_as_default(trained_model_path):
+    registry = ModelRegistry()
+    registry.load_default()
+
+    registry.load_if_present("production", trained_model_path)
+
+    assert registry.default_version == "production"
+    # A request that pins no version has to reach the trained pipeline, which
+    # answers with a 0/1 label, not the dummy's mean of the input vector (in
+    # the hundreds for this row, since the raw features include areas).
+    features = load_breast_cancer().data[0].tolist()
+    assert registry.predict(features) in (0.0, 1.0)
+    assert registry.predict(features, version="dummy") > 1.0
 
 
 def test_reload_rereads_from_original_path(trained_model_path):

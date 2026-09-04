@@ -21,11 +21,14 @@ The training step is optional. Skip it and the app still starts, serving a
 built-in dummy model (`app/models/dummy.py`, returns the mean of the input
 vector) under version `"dummy"`. Run it and you also get a real
 `LogisticRegression` fit on scikit-learn's breast cancer dataset, loaded as
-version `"production"`.
+version `"production"` and used as the default for requests that don't pin a
+version.
 
 Until that artifact loads, `/ready` answers 503. The dummy keeps `/predict`
 and `/health` responding so you can look at the service, but it is not a
 model to route traffic to, so the readiness probe does not count it.
+
+With no artifact on disk the default is the dummy:
 
 ```bash
 curl -X POST http://localhost:8000/predict \
