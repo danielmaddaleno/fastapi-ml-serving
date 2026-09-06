@@ -62,12 +62,24 @@ class ModelRegistry:
         Used at startup for the trained artifact: it may not exist yet on a
         fresh clone (the training script has not been run), and the app
         should still come up with the dummy model in that case.
+
+        Returns False both when the file is missing and when it is there but
+        unreadable, so a bad artifact degrades the service instead of killing
+        it.
         """
         p = Path(path)
         if not p.is_file():
             logger.info("No model artifact at %s, skipping v%s", p, version)
             return False
-        self.load(version, p)
+        try:
+            self.load(version, p)
+        except Exception:
+            # A truncated file, or one pickled by an incompatible sklearn
+            # build, would otherwise raise out of the lifespan and put the
+            # process in a crash loop. Stay up on the fallback; is_ready
+            # keeps reporting not-ready so nothing routes traffic here.
+            logger.exception("Could not load model v%s from %s", version, p)
+            return False
         return True
 
     def reload(self, version: str) -> bool:

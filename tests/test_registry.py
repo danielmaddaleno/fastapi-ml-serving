@@ -57,6 +57,22 @@ def test_load_if_present_missing_file(tmp_path):
     assert not registry.is_ready
 
 
+def test_load_if_present_corrupt_file(tmp_path):
+    registry = ModelRegistry()
+    registry.load_default()
+    corrupt = tmp_path / "model.joblib"
+    corrupt.write_bytes(b"this is not a joblib artifact")
+
+    loaded = registry.load_if_present("production", corrupt)
+
+    # An unreadable artifact must not raise out of startup. The dummy keeps
+    # answering and is_ready stays False so nothing routes traffic here.
+    assert loaded is False
+    assert registry.default_version == "dummy"
+    assert registry.is_ready is False
+    assert registry.predict([1.0, 3.0]) == 2.0
+
+
 def test_load_if_present_existing_file(trained_model_path):
     registry = ModelRegistry()
 

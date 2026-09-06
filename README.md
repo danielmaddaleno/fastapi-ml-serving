@@ -77,7 +77,9 @@ curl -X POST http://localhost:8000/predict \
 1. `app/main.py` builds the `FastAPI` app. On startup, the lifespan handler
    loads the dummy model, then tries `settings.model_path`
    (`artifacts/model.joblib`, overridable via `ML_MODEL_PATH`) and loads
-   that too if the file is there.
+   that too if the file is there. If that load fails (truncated file, or one
+   pickled by an incompatible sklearn build) it is logged and startup
+   continues on the dummy, with `/ready` still at 503.
 2. `POST /predict` validates the body against `PredictionRequest`
    (`app/schemas.py`), then hands off to `ModelRegistry.predict`
    (`app/models/registry.py`) via `asyncio.to_thread` so the sklearn call
