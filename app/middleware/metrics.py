@@ -10,6 +10,24 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp
 
+# Upper bounds (seconds) for the latency histogram, matching
+# prometheus_client.Histogram's defaults so existing dashboards and
+# histogram_quantile() queries transfer unchanged.
+_LATENCY_BUCKETS: tuple[float, ...] = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+_LATENCY_BUCKET_LABELS: tuple[str, ...] = (
+    "0.005",
+    "0.01",
+    "0.025",
+    "0.05",
+    "0.1",
+    "0.25",
+    "0.5",
+    "1.0",
+    "2.5",
+    "5.0",
+    "10.0",
+)
+
 
 def _escape_label_value(value: str) -> str:
     """Escape a string for use as a Prometheus label value.
@@ -24,7 +42,7 @@ def _escape_label_value(value: str) -> str:
 
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
-    """Collects request count and cumulative latency per endpoint.
+    """Collects request count and a latency histogram per endpoint.
 
     Exposes a ``/metrics`` endpoint in Prometheus text format. Counters live
     on the middleware instance, not on the class, so each app (and each test
@@ -36,6 +54,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._request_count: dict[str, int] = defaultdict(int)
         self._latency_sum: dict[str, float] = defaultdict(float)
+        self._latency_buckets: dict[str, list[int]] = defaultdict(lambda: [0] * len(_LATENCY_BUCKETS))
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path == "/metrics":
@@ -56,9 +75,18 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         label = f"{request.method}_{endpoint}"
         self._request_count[label] += 1
         self._latency_sum[label] += elapsed
+        self._observe_latency(label, elapsed)
 
         response.headers["X-Process-Time"] = f"{elapsed:.4f}"
         return response
+
+    def _observe_latency(self, label: str, elapsed: float) -> None:
+        # Buckets are cumulative (le = less-than-or-equal), so an observation
+        # lands in every bound it is under, not just the tightest one.
+        counts = self._latency_buckets[label]
+        for i, bound in enumerate(_LATENCY_BUCKETS):
+            if elapsed <= bound:
+                counts[i] += 1
 
     def _render_metrics(self) -> PlainTextResponse:
         lines: list[str] = [
@@ -69,10 +97,16 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             lines.append(f'http_requests_total{{endpoint="{_escape_label_value(label)}"}} {count}')
 
         lines += [
-            "# HELP http_request_latency_seconds_sum Cumulative latency",
-            "# TYPE http_request_latency_seconds_sum counter",
+            "# HELP http_request_latency_seconds Request latency distribution",
+            "# TYPE http_request_latency_seconds histogram",
         ]
-        for label, total in self._latency_sum.items():
-            lines.append(f'http_request_latency_seconds_sum{{endpoint="{_escape_label_value(label)}"}} {total:.6f}')
+        for label, total in self._request_count.items():
+            endpoint = _escape_label_value(label)
+            for le, bucket_count in zip(_LATENCY_BUCKET_LABELS, self._latency_buckets[label]):
+                lines.append(f'http_request_latency_seconds_bucket{{endpoint="{endpoint}",le="{le}"}} {bucket_count}')
+            # The +Inf bucket holds every observation, so it equals the count.
+            lines.append(f'http_request_latency_seconds_bucket{{endpoint="{endpoint}",le="+Inf"}} {total}')
+            lines.append(f'http_request_latency_seconds_sum{{endpoint="{endpoint}"}} {self._latency_sum[label]:.6f}')
+            lines.append(f'http_request_latency_seconds_count{{endpoint="{endpoint}"}} {total}')
 
         return PlainTextResponse("\n".join(lines) + "\n")

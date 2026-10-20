@@ -55,7 +55,7 @@ curl -X POST http://localhost:8000/predict \
 | `GET` | `/ready` | 200 once the trained model is loaded, 503 before that |
 | `POST` | `/predict` | Run inference, optionally pinning `model_version` |
 | `POST` | `/reload?version=production` | Re-read a model from its original file path, no restart |
-| `GET` | `/metrics` | Request counts and cumulative latency, Prometheus text format |
+| `GET` | `/metrics` | Request counts and a latency histogram, Prometheus text format |
 
 `PredictionResponse` from the OpenAPI schema FastAPI generates at `/docs`:
 
@@ -167,8 +167,6 @@ make format        # black + isort
   single `/reload` call at a time, not fine if you fire several
   concurrently, or run multiple uvicorn workers that each hold their own
   in-memory copy anyway (reloading one doesn't reload the others).
-- Metrics are counters only, no latency histogram/percentiles. See
-  [docs/metrics.md](docs/metrics.md).
 - No auth on `/reload`. It only re-reads a path already loaded at startup,
   but that's still an unauthenticated POST in a demo service; add a check
   before using this pattern for anything real.

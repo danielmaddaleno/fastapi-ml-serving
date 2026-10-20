@@ -39,6 +39,40 @@ async def test_metrics_counts_requests_by_endpoint(app):
 
 
 @pytest.mark.anyio
+async def test_metrics_exposes_latency_histogram(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.get("/health")
+        await client.get("/health")
+        resp = await client.get("/metrics")
+
+    body = resp.text
+    assert "# TYPE http_request_latency_seconds histogram" in body
+    # A histogram carries _bucket (with an le label), _sum, and _count series.
+    assert 'http_request_latency_seconds_bucket{endpoint="GET_/health",le="0.005"}' in body
+    assert 'http_request_latency_seconds_bucket{endpoint="GET_/health",le="+Inf"} 2' in body
+    assert 'http_request_latency_seconds_count{endpoint="GET_/health"} 2' in body
+    assert 'http_request_latency_seconds_sum{endpoint="GET_/health"}' in body
+
+
+@pytest.mark.anyio
+async def test_latency_buckets_are_cumulative_and_capped_by_count(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for _ in range(3):
+            await client.get("/health")
+        resp = await client.get("/metrics")
+
+    counts = []
+    for line in resp.text.splitlines():
+        if line.startswith('http_request_latency_seconds_bucket{endpoint="GET_/health"'):
+            counts.append(int(line.rsplit(" ", 1)[1]))
+
+    # Cumulative buckets never decrease as le grows, and the final +Inf bucket
+    # accounts for every observation.
+    assert counts == sorted(counts)
+    assert counts[-1] == 3
+
+
+@pytest.mark.anyio
 async def test_metrics_state_does_not_leak_across_apps(app):
     # A second app, built the same way conftest builds `app`, must start
     # with its own empty counters rather than inheriting the first app's
