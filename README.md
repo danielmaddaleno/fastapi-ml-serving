@@ -163,10 +163,10 @@ make format        # black + isort
 
 ## Known gaps
 
-- `ModelRegistry` isn't thread-safe against concurrent writers. Fine for a
-  single `/reload` call at a time, not fine if you fire several
-  concurrently, or run multiple uvicorn workers that each hold their own
-  in-memory copy anyway (reloading one doesn't reload the others).
+- `ModelRegistry` locks its in-memory state, so a `/reload` and a `/predict`
+  on different worker threads stay consistent. The lock stops at the process
+  edge, though: each uvicorn worker keeps its own copy, so a `/reload` on one
+  worker leaves the others serving the model they already had.
 - No auth on `/reload`. It only re-reads a path already loaded at startup,
   but that's still an unauthenticated POST in a demo service; add a check
   before using this pattern for anything real.

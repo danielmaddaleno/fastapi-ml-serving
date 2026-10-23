@@ -7,11 +7,14 @@ artifacts/model.joblib already existing on disk, so it passes on a fresh
 clone before anyone has run the training script.
 """
 
+import threading
 from pathlib import Path
 
+import joblib
 import pytest
 from sklearn.datasets import load_breast_cancer
 
+from app.models.dummy import DummyModel
 from app.models.registry import ModelRegistry
 from scripts.train_toy_model import train
 
@@ -142,3 +145,58 @@ def test_predict_with_no_models_raises_keyerror():
     # so an unqualified predict must fail loudly rather than dereference None.
     with pytest.raises(KeyError):
         registry.predict([1.0, 2.0])
+
+
+def test_reads_survive_a_concurrent_writer(tmp_path):
+    # /predict and /reload both run their registry calls in worker threads, so
+    # a reload mutates the store while predictions read it. is_ready and
+    # versions walk the model dict, and without a lock a writer changing its
+    # size mid-walk raises "dictionary changed size during iteration". Load a
+    # handful of versions, then hammer the reads from several threads while one
+    # writer clears and refills the store; the only error a reader may see is
+    # the KeyError predict already documents for an empty store.
+    versions = []
+    for i in range(8):
+        path = tmp_path / f"m{i}.joblib"
+        joblib.dump(DummyModel(), path)
+        versions.append((f"v{i}", path))
+
+    registry = ModelRegistry()
+    for version, path in versions:
+        registry.load(version, path)
+
+    errors: list[BaseException] = []
+    stop = threading.Event()
+
+    def writer():
+        try:
+            while not stop.is_set():
+                registry.unload_all()
+                for version, path in versions:
+                    registry.load(version, path)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    def reader():
+        try:
+            for _ in range(20000):
+                registry.versions
+                registry.is_ready
+                try:
+                    registry.predict([1.0, 2.0, 3.0])
+                except KeyError:
+                    pass
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    w = threading.Thread(target=writer)
+    readers = [threading.Thread(target=reader) for _ in range(4)]
+    w.start()
+    for r in readers:
+        r.start()
+    for r in readers:
+        r.join()
+    stop.set()
+    w.join()
+
+    assert errors == [], f"concurrent access raised: {errors!r}"

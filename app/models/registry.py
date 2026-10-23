@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -24,27 +25,34 @@ class Predictor(Protocol):
 class ModelRegistry:
     """In-memory model store with versioning.
 
-    Not safe for concurrent writes from multiple threads/processes; the app
-    only mutates it from the lifespan handler and the single-worker /reload
-    endpoint, so a lock has not been needed so far.
+    Both /predict and /reload hand their registry calls to a worker thread
+    (asyncio.to_thread), so a reload can mutate the store while a prediction
+    reads it. A lock serializes the mutations and the reads that walk the
+    version dicts, so a concurrent writer can't be seen mid-update.
+    It does not reach across processes: each uvicorn worker holds its own
+    copy, so a /reload on one worker leaves the others on the old model.
     """
 
     def __init__(self) -> None:
         self._models: dict[str, Predictor] = {}
         self._default_version: str | None = None
         self._paths: dict[str, Path] = {}
+        # Guards the dicts and the default-version pointer. Held only around
+        # the in-memory updates, never across the joblib.load disk read.
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     def load(self, version: str, path: str | Path) -> None:
         import joblib
 
         model = joblib.load(path)
-        self._models[version] = model
-        self._paths[version] = Path(path)
-        if self._default_version is None or self._default_version == FALLBACK_VERSION:
-            # A model loaded from disk outranks the fallback, so requests that
-            # do not pin a version stop being answered by the dummy.
-            self._default_version = version
+        with self._lock:
+            self._models[version] = model
+            self._paths[version] = Path(path)
+            if self._default_version is None or self._default_version == FALLBACK_VERSION:
+                # A model loaded from disk outranks the fallback, so requests
+                # that do not pin a version stop being answered by the dummy.
+                self._default_version = version
         logger.info("Loaded model v%s from %s", version, path)
 
     def load_default(self) -> None:
@@ -52,8 +60,9 @@ class ModelRegistry:
         from app.models.dummy import DummyModel
 
         dummy = DummyModel()
-        self._models[FALLBACK_VERSION] = dummy
-        self._default_version = FALLBACK_VERSION
+        with self._lock:
+            self._models[FALLBACK_VERSION] = dummy
+            self._default_version = FALLBACK_VERSION
         logger.info("Loaded built-in dummy model")
 
     def load_if_present(self, version: str, path: str | Path) -> bool:
@@ -89,7 +98,8 @@ class ModelRegistry:
         restarting the process. Returns False if ``version`` was never
         loaded from a file (e.g. the built-in dummy model).
         """
-        path = self._paths.get(version)
+        with self._lock:
+            path = self._paths.get(version)
         if path is None:
             return False
         self.load(version, path)
@@ -97,11 +107,18 @@ class ModelRegistry:
 
     # ------------------------------------------------------------------
     def predict(self, features: list[float], version: str | None = None) -> float:
-        v = version or self._default_version
-        if v is None or v not in self._models:
-            raise KeyError(f"Model version '{v}' not found")
+        with self._lock:
+            # Resolve the version and grab the model under the lock so a
+            # concurrent reload/unload can't swap or drop it between the
+            # membership check and the lookup. The sklearn call itself runs
+            # off the lock: it's the slow part, and it only needs the
+            # reference, not the registry.
+            v = version or self._default_version
+            if v is None or v not in self._models:
+                raise KeyError(f"Model version '{v}' not found")
+            model = self._models[v]
         X = np.array(features).reshape(1, -1)
-        return float(self._models[v].predict(X)[0])
+        return float(model.predict(X)[0])
 
     @property
     def is_ready(self) -> bool:
@@ -111,17 +128,21 @@ class ModelRegistry:
         here would make the readiness probe answer 200 unconditionally, which
         defeats the point of having one.
         """
-        return any(version != FALLBACK_VERSION for version in self._models)
+        with self._lock:
+            return any(version != FALLBACK_VERSION for version in self._models)
 
     @property
     def default_version(self) -> str:
-        return self._default_version or "none"
+        with self._lock:
+            return self._default_version or "none"
 
     @property
     def versions(self) -> list[str]:
-        return sorted(self._models)
+        with self._lock:
+            return sorted(self._models)
 
     def unload_all(self) -> None:
-        self._models.clear()
-        self._paths.clear()
-        self._default_version = None
+        with self._lock:
+            self._models.clear()
+            self._paths.clear()
+            self._default_version = None
