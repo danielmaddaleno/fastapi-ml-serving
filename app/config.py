@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     workers: int = 1
     enable_metrics: bool = True
+    reload_token: str | None = None
 
 
 settings = Settings()

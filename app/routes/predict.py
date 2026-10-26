@@ -3,15 +3,32 @@
 import asyncio
 import logging
 import math
+import secrets
 import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
+from app.config import settings
 from app.schemas import PredictionRequest, PredictionResponse, ReloadResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _require_reload_token(authorization: str | None = Header(default=None)) -> None:
+    """Gate /reload behind a bearer token when ML_RELOAD_TOKEN is set.
+
+    Unset, the endpoint stays open so the demo keeps working. Set, each reload
+    must send Authorization: Bearer <token>, compared in constant time so a
+    wrong token leaks nothing through timing.
+    """
+    expected = settings.reload_token
+    if not expected:
+        return
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing reload token")
 
 
 @router.post("/predict", response_model=PredictionResponse)
@@ -55,7 +72,7 @@ async def predict(request: Request, payload: PredictionRequest) -> PredictionRes
     )
 
 
-@router.post("/reload", response_model=ReloadResponse)
+@router.post("/reload", response_model=ReloadResponse, dependencies=[Depends(_require_reload_token)])
 async def reload_model(request: Request, version: str = "production") -> ReloadResponse:
     """Re-read a model from disk without restarting the process.
 

@@ -86,7 +86,8 @@ curl -X POST http://localhost:8000/predict \
    doesn't block the event loop.
 3. `POST /reload` calls `joblib.load` again on the same path a version was
    first loaded from. Useful after retraining without a redeploy; it does
-   not discover new files, only re-reads known ones.
+   not discover new files, only re-reads known ones. When `ML_RELOAD_TOKEN`
+   is set the request must carry a matching `Authorization: Bearer` header.
 4. `PrometheusMiddleware` (`app/middleware/metrics.py`) wraps every request,
    timing it and bumping a per-endpoint counter, unless the path is
    `/metrics` itself.
@@ -126,6 +127,7 @@ Everything is an environment variable, `ML_`-prefixed, read by
 | `ML_MODEL_PATH` | `artifacts/model.joblib` | Where the lifespan looks for a trained model |
 | `ML_MODEL_VERSION` | `1.0.0` | Free-text version label, not currently surfaced anywhere |
 | `ML_LOG_LEVEL` | `INFO` | Passed through to `logging` |
+| `ML_RELOAD_TOKEN` | (unset) | When set, `/reload` requires `Authorization: Bearer <this value>` |
 | `ML_WORKERS` | `1` | Not read by the app itself; set uvicorn's `--workers` separately if you scale out |
 | `ML_ENABLE_METRICS` | `true` | Not currently wired to anything, `/metrics` is always mounted |
 
@@ -167,9 +169,9 @@ make format        # black + isort
   on different worker threads stay consistent. The lock stops at the process
   edge, though: each uvicorn worker keeps its own copy, so a `/reload` on one
   worker leaves the others serving the model they already had.
-- No auth on `/reload`. It only re-reads a path already loaded at startup,
-  but that's still an unauthenticated POST in a demo service; add a check
-  before using this pattern for anything real.
+- `/reload` is unauthenticated by default. Set `ML_RELOAD_TOKEN` to require
+  an `Authorization: Bearer <token>` header on every reload; leave it unset
+  only in a trusted or demo environment.
 - No request size limit. A large feature vector is accepted and processed
   as-is; put a cap in front of this before exposing it.
 

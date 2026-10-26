@@ -3,6 +3,8 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import settings
+
 
 @pytest.mark.anyio
 async def test_predict_success(app):
@@ -81,3 +83,40 @@ async def test_reload_missing_version(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post("/reload", params={"version": "nope"})
     assert resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_reload_requires_token_when_configured(app, monkeypatch):
+    # With ML_RELOAD_TOKEN set, the auth check runs before the handler, so a
+    # request with no credentials is rejected (401) regardless of version.
+    monkeypatch.setattr(settings, "reload_token", "s3cret")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/reload", params={"version": "production"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_reload_rejects_wrong_token(app, monkeypatch):
+    monkeypatch.setattr(settings, "reload_token", "s3cret")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/reload",
+            params={"version": "production"},
+            headers={"Authorization": "Bearer wrong"},
+        )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_reload_accepts_matching_token(app_with_model, monkeypatch):
+    # The matching bearer token gets past the gate, and the production model
+    # loaded by the fixture is re-read from its path.
+    monkeypatch.setattr(settings, "reload_token", "s3cret")
+    async with AsyncClient(transport=ASGITransport(app=app_with_model), base_url="http://test") as client:
+        resp = await client.post(
+            "/reload",
+            params={"version": "production"},
+            headers={"Authorization": "Bearer s3cret"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"reloaded": True, "version": "production"}
