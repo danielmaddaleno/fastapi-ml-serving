@@ -128,6 +128,7 @@ Everything is an environment variable, `ML_`-prefixed, read by
 | `ML_MODEL_VERSION` | `1.0.0` | Free-text version label, not currently surfaced anywhere |
 | `ML_LOG_LEVEL` | `INFO` | Passed through to `logging` |
 | `ML_RELOAD_TOKEN` | (unset) | When set, `/reload` requires `Authorization: Bearer <this value>` |
+| `ML_MAX_REQUEST_BYTES` | `1048576` | Reject a request body larger than this with 413; set to 0 to disable |
 | `ML_WORKERS` | `1` | Not read by the app itself; set uvicorn's `--workers` separately if you scale out |
 | `ML_ENABLE_METRICS` | `true` | Not currently wired to anything, `/metrics` is always mounted |
 
@@ -172,8 +173,11 @@ make format        # black + isort
 - `/reload` is unauthenticated by default. Set `ML_RELOAD_TOKEN` to require
   an `Authorization: Bearer <token>` header on every reload; leave it unset
   only in a trusted or demo environment.
-- No request size limit. A large feature vector is accepted and processed
-  as-is; put a cap in front of this before exposing it.
+- The request body cap (`ML_MAX_REQUEST_BYTES`, 1 MiB by default) is counted
+  on the bytes actually received, so it holds even when `Content-Length` is
+  absent or understated. It bounds the raw body, not the parsed vector: a
+  payload under the cap with an unreasonable feature count still reaches the
+  model, so size `ML_MAX_REQUEST_BYTES` for the largest vector you expect.
 
 ## License
 

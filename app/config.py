@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     workers: int = 1
     enable_metrics: bool = True
     reload_token: str | None = None
+    max_request_bytes: int = 1_048_576
 
 
 settings = Settings()

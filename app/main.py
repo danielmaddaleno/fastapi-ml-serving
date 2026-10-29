@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.middleware.body_limit import BodySizeLimitMiddleware
 from app.middleware.metrics import PrometheusMiddleware
 from app.models.registry import ModelRegistry
 from app.routes import health, predict
@@ -76,6 +77,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_exception_handler(RequestValidationError, _validation_exception_handler)
+    # Added first so it sits just inside the metrics middleware: an oversized
+    # body is cut off right above the router, before the route buffers it.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.add_middleware(PrometheusMiddleware)
     app.include_router(health.router, tags=["health"])
     app.include_router(predict.router, tags=["inference"])
