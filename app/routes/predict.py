@@ -9,11 +9,33 @@ import time
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app.config import settings
-from app.schemas import PredictionRequest, PredictionResponse, ReloadResponse
+from app.schemas import (
+    BatchPredictionRequest,
+    BatchPredictionResponse,
+    PredictionRequest,
+    PredictionResponse,
+    ReloadResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _inference_error(exc: Exception) -> HTTPException:
+    """Map an exception raised by a registry inference call to an HTTP error.
+
+    KeyError means the pinned version was never loaded (404). ValueError is
+    sklearn rejecting the input, most often a wrong feature count (422).
+    Anything else is unexpected: log it server-side, but keep the raw text out
+    of the response since it can expose internals.
+    """
+    if isinstance(exc, KeyError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=422, detail=str(exc))
+    logger.exception("Unexpected error during inference")
+    return HTTPException(status_code=500, detail="Internal error during inference")
 
 
 def _require_reload_token(authorization: str | None = Header(default=None)) -> None:
@@ -40,19 +62,8 @@ async def predict(request: Request, payload: PredictionRequest) -> PredictionRes
         # it inline would block the event loop for the duration of inference,
         # so it goes to a worker thread and the route awaits the result.
         prediction = await asyncio.to_thread(registry.predict, payload.features, payload.model_version)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except ValueError as exc:
-        # sklearn raises ValueError when the feature vector does not match what
-        # the model expects (most often the wrong number of features). That is
-        # a client input problem, so surface it as a 422 rather than a 500.
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception:
-        # Anything past the KeyError/ValueError cases above is unexpected. Log
-        # it server-side for debugging, but do not echo the raw exception text
-        # back to the client, since it can expose internal details.
-        logger.exception("Unexpected error during inference")
-        raise HTTPException(status_code=500, detail="Internal error during inference")
+    except Exception as exc:
+        raise _inference_error(exc) from exc
 
     if not math.isfinite(prediction):
         # A model can emit NaN/inf under numerical instability even when the
@@ -67,6 +78,37 @@ async def predict(request: Request, payload: PredictionRequest) -> PredictionRes
     latency_ms = (time.perf_counter() - start) * 1000
     return PredictionResponse(
         prediction=prediction,
+        model_version=payload.model_version or registry.default_version,
+        latency_ms=round(latency_ms, 3),
+    )
+
+
+@router.post("/predict/batch", response_model=BatchPredictionResponse)
+async def predict_batch(request: Request, payload: BatchPredictionRequest) -> BatchPredictionResponse:
+    """Score many feature vectors in one request.
+
+    One round trip and one vectorized model.predict for the whole batch,
+    instead of a request per row. Version resolution and error mapping match
+    /predict, and predictions come back in the order the instances were sent.
+    """
+    registry = request.app.state.registry
+    start = time.perf_counter()
+    try:
+        predictions = await asyncio.to_thread(registry.predict_batch, payload.instances, payload.model_version)
+    except Exception as exc:
+        raise _inference_error(exc) from exc
+
+    if any(not math.isfinite(p) for p in predictions):
+        # One bad row would serialize to a JSON null in the middle of the list,
+        # a silent wrong answer the caller can't tell from a real one. Fail the
+        # whole batch instead, same as the single-prediction path does.
+        version = payload.model_version or registry.default_version
+        logger.error("Model %s produced a non-finite prediction in a batch", version)
+        raise HTTPException(status_code=500, detail="Model produced a non-finite prediction")
+
+    latency_ms = (time.perf_counter() - start) * 1000
+    return BatchPredictionResponse(
+        predictions=predictions,
         model_version=payload.model_version or registry.default_version,
         latency_ms=round(latency_ms, 3),
     )

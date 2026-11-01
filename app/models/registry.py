@@ -120,6 +120,21 @@ class ModelRegistry:
         X = np.array(features).reshape(1, -1)
         return float(model.predict(X)[0])
 
+    def predict_batch(self, instances: list[list[float]], version: str | None = None) -> list[float]:
+        """Score several feature vectors with one model call.
+
+        Resolves and grabs the model under the lock exactly like predict(),
+        then stacks the rows into a 2-D array and runs a single vectorized
+        model.predict over the whole batch rather than one call per row.
+        """
+        with self._lock:
+            v = version or self._default_version
+            if v is None or v not in self._models:
+                raise KeyError(f"Model version '{v}' not found")
+            model = self._models[v]
+        X = np.array(instances, dtype=float)
+        return [float(p) for p in model.predict(X)]
+
     @property
     def is_ready(self) -> bool:
         """True once a model other than the built-in fallback is loaded.

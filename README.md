@@ -47,13 +47,25 @@ curl -X POST http://localhost:8000/predict \
 # {"prediction":0.0,"model_version":"production","latency_ms":0.63}
 ```
 
+To score more than one row, post them to `/predict/batch` as `instances`
+(each the same length) and get predictions back in the same order, from a
+single vectorized model call rather than one request per row:
+
+```bash
+curl -X POST http://localhost:8000/predict/batch \
+  -H "Content-Type: application/json" \
+  -d '{"instances": [[0.1, 0.5, 0.3, 0.8], [0.2, 0.2, 0.2, 0.2]]}'
+# {"predictions":[0.425,0.2],"model_version":"dummy","latency_ms":0.28}
+```
+
 ## Endpoints
 
 | Method | Path | What it does |
 |---|---|---|
 | `GET` | `/health` | Liveness: always 200, plus whether the trained model is loaded and the default version |
 | `GET` | `/ready` | 200 once the trained model is loaded, 503 before that |
-| `POST` | `/predict` | Run inference, optionally pinning `model_version` |
+| `POST` | `/predict` | Run inference on one feature vector, optionally pinning `model_version` |
+| `POST` | `/predict/batch` | Score many feature vectors in one call (`instances`), one vectorized model call |
 | `POST` | `/reload?version=production` | Re-read a model from its original file path, no restart |
 | `GET` | `/metrics` | Request counts and a latency histogram, Prometheus text format |
 
