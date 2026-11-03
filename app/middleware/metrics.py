@@ -44,6 +44,11 @@ def _escape_label_value(value: str) -> str:
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Collects request count and a latency histogram per endpoint.
 
+    The request count is split by response status code as well as endpoint, so
+    error rate (how many requests returned 5xx/4xx) is derivable from the
+    scrape; the latency histogram stays per endpoint, since a latency
+    distribution sliced per status code is rarely what a dashboard wants.
+
     Exposes a ``/metrics`` endpoint in Prometheus text format. Counters live
     on the middleware instance, not on the class, so each app (and each test
     that builds its own app) gets an independent set of counters instead of
@@ -52,8 +57,9 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
-        self._request_count: dict[str, int] = defaultdict(int)
+        self._request_count: dict[tuple[str, int], int] = defaultdict(int)
         self._latency_sum: dict[str, float] = defaultdict(float)
+        self._latency_count: dict[str, int] = defaultdict(int)
         self._latency_buckets: dict[str, list[int]] = defaultdict(lambda: [0] * len(_LATENCY_BUCKETS))
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -73,8 +79,13 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         route = request.scope.get("route")
         endpoint = getattr(route, "path", None) or "<unmatched>"
         label = f"{request.method}_{endpoint}"
-        self._request_count[label] += 1
+        # Status code is a second count dimension: a 200 prediction and a 500
+        # failure on the same route are different events to alert on. Codes are
+        # a small bounded set, so endpoint x code stays bounded the same way
+        # the route templating keeps endpoint bounded.
+        self._request_count[(label, response.status_code)] += 1
         self._latency_sum[label] += elapsed
+        self._latency_count[label] += 1
         self._observe_latency(label, elapsed)
 
         response.headers["X-Process-Time"] = f"{elapsed:.4f}"
@@ -93,14 +104,15 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             "# HELP http_requests_total Total request count",
             "# TYPE http_requests_total counter",
         ]
-        for label, count in self._request_count.items():
-            lines.append(f'http_requests_total{{endpoint="{_escape_label_value(label)}"}} {count}')
+        for (label, code), count in self._request_count.items():
+            endpoint = _escape_label_value(label)
+            lines.append(f'http_requests_total{{endpoint="{endpoint}",code="{code}"}} {count}')
 
         lines += [
             "# HELP http_request_latency_seconds Request latency distribution",
             "# TYPE http_request_latency_seconds histogram",
         ]
-        for label, total in self._request_count.items():
+        for label, total in self._latency_count.items():
             endpoint = _escape_label_value(label)
             for le, bucket_count in zip(_LATENCY_BUCKET_LABELS, self._latency_buckets[label]):
                 lines.append(f'http_request_latency_seconds_bucket{{endpoint="{endpoint}",le="{le}"}} {bucket_count}')

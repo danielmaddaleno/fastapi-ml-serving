@@ -2,17 +2,20 @@
 
 `GET /metrics` is served directly by `PrometheusMiddleware`
 (`app/middleware/metrics.py`), no `prometheus_client` dependency involved.
-Per `METHOD_path` label it tracks how many requests hit that route and a
-latency histogram (bucketed distribution, running sum, and count).
+Per `METHOD_path` endpoint it tracks how many requests hit that route and a
+latency histogram (bucketed distribution, running sum, and count). The
+request count carries a second `code` label with the response status, so the
+scrape can tell a successful prediction from a 4xx/5xx on the same route.
 
-Real output after a health check and two predictions (buckets trimmed for
-brevity):
+Real output after a health check and two predictions, one of which pinned an
+unknown model version and got a 404 (buckets trimmed for brevity):
 
 ```
 # HELP http_requests_total Total request count
 # TYPE http_requests_total counter
-http_requests_total{endpoint="GET_/health"} 1
-http_requests_total{endpoint="POST_/predict"} 2
+http_requests_total{endpoint="GET_/health",code="200"} 1
+http_requests_total{endpoint="POST_/predict",code="200"} 1
+http_requests_total{endpoint="POST_/predict",code="404"} 1
 # HELP http_request_latency_seconds Request latency distribution
 # TYPE http_request_latency_seconds histogram
 http_request_latency_seconds_bucket{endpoint="GET_/health",le="0.005"} 1
@@ -32,6 +35,13 @@ percentiles with the usual query:
 
 ```promql
 histogram_quantile(0.95, sum by (le) (rate(http_request_latency_seconds_bucket[5m])))
+```
+
+With the `code` label on the request counter, error rate is a ratio of the
+same series:
+
+```promql
+sum(rate(http_requests_total{code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
 ```
 
 ## What is and isn't here

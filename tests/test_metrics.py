@@ -35,7 +35,22 @@ async def test_metrics_counts_requests_by_endpoint(app):
         resp = await client.get("/metrics")
 
     body = resp.text
-    assert 'http_requests_total{endpoint="GET_/health"} 2' in body
+    assert 'http_requests_total{endpoint="GET_/health",code="200"} 2' in body
+
+
+@pytest.mark.anyio
+async def test_metrics_counts_requests_by_status_code(app):
+    # The same route can both succeed and fail; the counter has to keep those
+    # apart or there is no way to compute an error rate from the scrape. A
+    # dummy prediction returns 200, and pinning an unknown version 404s.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/predict", json={"features": [0.1, 0.2, 0.3]})
+        await client.post("/predict", json={"features": [0.1, 0.2], "model_version": "nope"})
+        resp = await client.get("/metrics")
+
+    body = resp.text
+    assert 'http_requests_total{endpoint="POST_/predict",code="200"} 1' in body
+    assert 'http_requests_total{endpoint="POST_/predict",code="404"} 1' in body
 
 
 @pytest.mark.anyio
