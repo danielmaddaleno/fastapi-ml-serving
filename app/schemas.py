@@ -62,3 +62,8 @@ class HealthResponse(BaseModel):
 class ReloadResponse(BaseModel):
     reloaded: bool
     version: str
+
+
+class ModelsResponse(BaseModel):
+    versions: list[str]
+    default: str

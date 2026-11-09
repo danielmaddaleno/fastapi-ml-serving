@@ -12,6 +12,7 @@ from app.config import settings
 from app.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
+    ModelsResponse,
     PredictionRequest,
     PredictionResponse,
     ReloadResponse,
@@ -51,6 +52,19 @@ def _require_reload_token(authorization: str | None = Header(default=None)) -> N
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing reload token")
+
+
+@router.get("/models", response_model=ModelsResponse)
+async def list_models(request: Request) -> ModelsResponse:
+    """List the versions loaded in the registry and the default one.
+
+    /predict and /reload take a version to pin, but nothing told a caller
+    which versions are loadable; /health surfaces only the default. Return the
+    set so clients and operators can pick a version instead of guessing and
+    getting a 404.
+    """
+    registry = request.app.state.registry
+    return ModelsResponse(versions=registry.versions, default=registry.default_version)
 
 
 @router.post("/predict", response_model=PredictionResponse)

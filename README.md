@@ -47,6 +47,14 @@ curl -X POST http://localhost:8000/predict \
 # {"prediction":0.0,"model_version":"production","latency_ms":0.63}
 ```
 
+`GET /models` lists what you can pin, so you don't have to guess a version
+and get a 404:
+
+```bash
+curl http://localhost:8000/models
+# {"versions":["dummy","production"],"default":"production"}
+```
+
 To score more than one row, post them to `/predict/batch` as `instances`
 (each the same length) and get predictions back in the same order, from a
 single vectorized model call rather than one request per row:
@@ -64,6 +72,7 @@ curl -X POST http://localhost:8000/predict/batch \
 |---|---|---|
 | `GET` | `/health` | Liveness: always 200, plus whether the trained model is loaded and the default version |
 | `GET` | `/ready` | 200 once the trained model is loaded, 503 before that |
+| `GET` | `/models` | List the loaded versions and which one is the default |
 | `POST` | `/predict` | Run inference on one feature vector, optionally pinning `model_version` |
 | `POST` | `/predict/batch` | Score many feature vectors in one call (`instances`), one vectorized model call |
 | `POST` | `/reload?version=production` | Re-read a model from its original file path, no restart |
