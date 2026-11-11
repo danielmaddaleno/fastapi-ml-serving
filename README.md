@@ -151,11 +151,11 @@ Everything is an environment variable, `ML_`-prefixed, read by
 | `ML_RELOAD_TOKEN` | (unset) | When set, `/reload` requires `Authorization: Bearer <this value>` |
 | `ML_MAX_REQUEST_BYTES` | `1048576` | Reject a request body larger than this with 413; set to 0 to disable |
 | `ML_WORKERS` | `1` | Not read by the app itself; set uvicorn's `--workers` separately if you scale out |
-| `ML_ENABLE_METRICS` | `true` | Not currently wired to anything, `/metrics` is always mounted |
+| `ML_ENABLE_METRICS` | `true` | Mount the metrics middleware and `/metrics`; set false to drop both (no timing, `/metrics` returns 404) |
 
-`ML_WORKERS` and `ML_ENABLE_METRICS` exist on `Settings` but nothing reads
-them yet. Listed here rather than hidden, since that's the honest state of
-the code.
+`ML_WORKERS` exists on `Settings` but nothing reads it: scaling out is the
+server's job, so set uvicorn's `--workers` instead. Listed here rather than
+hidden, since that's the honest state of the code.
 
 ## Docker
 

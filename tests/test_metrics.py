@@ -88,6 +88,37 @@ async def test_latency_buckets_are_cumulative_and_capped_by_count(app):
 
 
 @pytest.mark.anyio
+async def test_metrics_disabled_unroutes_endpoint_and_timing(model_path, monkeypatch):
+    # ML_ENABLE_METRICS=false drops PrometheusMiddleware, which both serves
+    # /metrics and stamps the X-Process-Time header. With it gone, /metrics has
+    # no route left (404) and ordinary responses carry no timing header, while
+    # the rest of the app keeps working.
+    from app.config import settings
+    from app.main import create_app
+
+    monkeypatch.setattr(settings, "enable_metrics", False)
+    disabled_app = create_app()
+    async with disabled_app.router.lifespan_context(disabled_app):
+        async with AsyncClient(transport=ASGITransport(app=disabled_app), base_url="http://test") as client:
+            metrics_resp = await client.get("/metrics")
+            health_resp = await client.get("/health")
+
+    assert metrics_resp.status_code == 404
+    assert health_resp.status_code == 200
+    assert "x-process-time" not in health_resp.headers
+
+
+@pytest.mark.anyio
+async def test_metrics_enabled_by_default_stamps_timing(app):
+    # The flipside: with metrics on (the default), the middleware is present
+    # and every response carries the X-Process-Time header it sets.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/health")
+
+    assert "x-process-time" in resp.headers
+
+
+@pytest.mark.anyio
 async def test_metrics_state_does_not_leak_across_apps(app):
     # A second app, built the same way conftest builds `app`, must start
     # with its own empty counters rather than inheriting the first app's

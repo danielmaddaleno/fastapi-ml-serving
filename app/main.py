@@ -80,7 +80,13 @@ def create_app() -> FastAPI:
     # Added first so it sits just inside the metrics middleware: an oversized
     # body is cut off right above the router, before the route buffers it.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes)
-    app.add_middleware(PrometheusMiddleware)
+    if settings.enable_metrics:
+        # The middleware both times every request and serves /metrics, so
+        # skipping it when disabled leaves /metrics unrouted (404). Lets an
+        # operator who scrapes out-of-band, or doesn't want the endpoint
+        # reachable at all, actually turn it off instead of the flag being
+        # accepted and ignored.
+        app.add_middleware(PrometheusMiddleware)
     app.include_router(health.router, tags=["health"])
     app.include_router(predict.router, tags=["inference"])
     return app
