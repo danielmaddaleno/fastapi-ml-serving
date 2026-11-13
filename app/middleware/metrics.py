@@ -67,9 +67,23 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             return self._render_metrics()
 
         start = time.perf_counter()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # A route that raises returns no response here: the 500 the client
+            # receives is synthesized by ServerErrorMiddleware, which sits above
+            # this middleware. Recording only call_next's return value would
+            # leave those requests out of http_requests_total, so the
+            # code=~"5.." error rate in docs/metrics.md would miss unhandled
+            # failures. Count it as a 500, then re-raise so the 500 is produced.
+            self._record(request, 500, time.perf_counter() - start)
+            raise
         elapsed = time.perf_counter() - start
+        self._record(request, response.status_code, elapsed)
+        response.headers["X-Process-Time"] = f"{elapsed:.4f}"
+        return response
 
+    def _record(self, request: Request, status_code: int, elapsed: float) -> None:
         # Label by the matched route template (e.g. "/predict"), which the
         # router records on the scope during call_next, rather than the raw
         # request path. An unmatched request (404) has no route, so bucket all
@@ -83,13 +97,10 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         # failure on the same route are different events to alert on. Codes are
         # a small bounded set, so endpoint x code stays bounded the same way
         # the route templating keeps endpoint bounded.
-        self._request_count[(label, response.status_code)] += 1
+        self._request_count[(label, status_code)] += 1
         self._latency_sum[label] += elapsed
         self._latency_count[label] += 1
         self._observe_latency(label, elapsed)
-
-        response.headers["X-Process-Time"] = f"{elapsed:.4f}"
-        return response
 
     def _observe_latency(self, label: str, elapsed: float) -> None:
         # Buckets are cumulative (le = less-than-or-equal), so an observation

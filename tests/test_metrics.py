@@ -119,6 +119,33 @@ async def test_metrics_enabled_by_default_stamps_timing(app):
 
 
 @pytest.mark.anyio
+async def test_metrics_counts_unhandled_exception_as_500():
+    # A route that raises rather than returns gets its 500 from
+    # ServerErrorMiddleware, above PrometheusMiddleware. The counter has to
+    # record that 500 anyway, or the code=~"5.." error rate silently drops the
+    # worst failures. Build a minimal app so we can mount a route that raises.
+    from fastapi import FastAPI
+
+    from app.middleware.metrics import PrometheusMiddleware
+
+    raising_app = FastAPI()
+    raising_app.add_middleware(PrometheusMiddleware)
+
+    @raising_app.get("/boom")
+    async def boom():
+        raise RuntimeError("unhandled")
+
+    transport = ASGITransport(app=raising_app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/boom")
+        assert resp.status_code == 500
+        metrics = await client.get("/metrics")
+
+    assert 'http_requests_total{endpoint="GET_/boom",code="500"} 1' in metrics.text
+    assert 'http_request_latency_seconds_count{endpoint="GET_/boom"} 1' in metrics.text
+
+
+@pytest.mark.anyio
 async def test_metrics_state_does_not_leak_across_apps(app):
     # A second app, built the same way conftest builds `app`, must start
     # with its own empty counters rather than inheriting the first app's
