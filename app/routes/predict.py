@@ -9,6 +9,7 @@ import time
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app.config import settings
+from app.models.registry import ModelReloadError
 from app.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -136,7 +137,16 @@ async def reload_model(request: Request, version: str = "production") -> ReloadR
     pick up the change with a single call instead of a deploy.
     """
     registry = request.app.state.registry
-    reloaded = await asyncio.to_thread(registry.reload, version)
+    try:
+        reloaded = await asyncio.to_thread(registry.reload, version)
+    except ModelReloadError as exc:
+        # The new artifact on disk can't be read right now (a retrain writing
+        # it, or an incompatible pickle). The previous model is untouched and
+        # still serving, so answer 503 to say "try again" rather than 500.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model version '{version}' could not be reloaded; previous model still serving",
+        ) from exc
     if not reloaded:
         raise HTTPException(
             status_code=404,

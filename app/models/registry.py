@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 FALLBACK_VERSION = "dummy"
 
 
+class ModelReloadError(RuntimeError):
+    """A known version's artifact could not be re-read from its path.
+
+    The file was loadable once (the version has a recorded path), but reading
+    it now fails: a retraining job writing it mid-request, or an artifact
+    pickled by an incompatible sklearn build. Raised instead of letting the
+    joblib error escape as an opaque 500.
+    """
+
+
 class Predictor(Protocol):
     """Any object that exposes a sklearn-style predict method."""
 
@@ -102,7 +112,16 @@ class ModelRegistry:
             path = self._paths.get(version)
         if path is None:
             return False
-        self.load(version, path)
+        try:
+            self.load(version, path)
+        except Exception as exc:
+            # load() reads the file before taking the lock, so a failed read
+            # leaves the previously loaded model in place and still serving.
+            # Startup already degrades this way (load_if_present); do the same
+            # here so a half-written or incompatible artifact doesn't turn a
+            # reload into a 500 and drop the service's error signal.
+            logger.exception("Could not reload model v%s from %s", version, path)
+            raise ModelReloadError(str(path)) from exc
         return True
 
     # ------------------------------------------------------------------

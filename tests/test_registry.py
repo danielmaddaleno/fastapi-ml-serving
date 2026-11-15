@@ -15,7 +15,7 @@ import pytest
 from sklearn.datasets import load_breast_cancer
 
 from app.models.dummy import DummyModel
-from app.models.registry import ModelRegistry
+from app.models.registry import ModelRegistry, ModelReloadError
 from scripts.train_toy_model import train
 
 
@@ -107,6 +107,27 @@ def test_reload_rereads_from_original_path(trained_model_path):
     reloaded = registry.reload("production")
 
     assert reloaded is True
+
+
+def test_reload_corrupt_artifact_keeps_previous_model(tmp_path):
+    path = tmp_path / "model.joblib"
+    train(path, random_state=0)
+    registry = ModelRegistry()
+    registry.load("production", path)
+    features = load_breast_cancer().data[0].tolist()
+    before = registry.predict(features)
+
+    # Simulate a retrain writing the file (truncated) or dropping an
+    # incompatible pickle: the path still resolves, but joblib.load fails.
+    path.write_bytes(b"not a joblib artifact anymore")
+
+    with pytest.raises(ModelReloadError):
+        registry.reload("production")
+
+    # load() reads before mutating, so the in-memory model is untouched and
+    # keeps answering with the same result as before the failed reload.
+    assert registry.predict(features) == before
+    assert registry.default_version == "production"
 
 
 def test_reload_unknown_version_returns_false():

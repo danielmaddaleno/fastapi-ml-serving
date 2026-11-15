@@ -108,6 +108,23 @@ async def test_reload_rejects_wrong_token(app, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_reload_corrupt_artifact_returns_503_and_keeps_serving(app_with_model, model_path):
+    # The fixture loaded "production" from model_path. Overwrite that file with
+    # bytes joblib can't read, as a mid-write retrain would, then reload: the
+    # route answers 503 instead of a bare 500, and the previously loaded model
+    # keeps serving predictions.
+    body = {"model_version": "production", "features": [0.0] * 30}
+    async with AsyncClient(transport=ASGITransport(app=app_with_model), base_url="http://test") as client:
+        assert (await client.post("/predict", json=body)).status_code == 200
+
+        model_path.write_bytes(b"corrupt artifact")
+        resp = await client.post("/reload", params={"version": "production"})
+        assert resp.status_code == 503
+
+        assert (await client.post("/predict", json=body)).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_reload_accepts_matching_token(app_with_model, monkeypatch):
     # The matching bearer token gets past the gate, and the production model
     # loaded by the fixture is re-read from its path.
