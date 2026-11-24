@@ -40,6 +40,35 @@ async def test_predict_non_finite_features_rejected(app):
 
 
 @pytest.mark.anyio
+async def test_predict_reports_the_version_it_scored_with(app):
+    # The response's model_version has to be the version the registry actually
+    # scored under. Resolving the default a second time after inference could
+    # name a different model if a reload moved the default in between, so the
+    # route must report the same value it passed to predict. Here the registry
+    # records what version reached it; the stand-in default would differ from
+    # the None an unpinned request used to forward.
+    class RecordingRegistry:
+        default_version = "production"
+
+        def __init__(self) -> None:
+            self.scored_with = "unset"
+
+        def predict(self, features, version=None):
+            self.scored_with = version
+            return 0.5
+
+    recording = RecordingRegistry()
+    app.state.registry = recording
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/predict", json={"features": [1.0, 2.0]})
+
+    assert resp.status_code == 200
+    assert recording.scored_with == "production"
+    assert resp.json()["model_version"] == recording.scored_with
+
+
+@pytest.mark.anyio
 async def test_predict_unknown_version(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(

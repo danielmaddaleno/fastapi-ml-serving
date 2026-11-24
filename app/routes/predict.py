@@ -71,12 +71,17 @@ async def list_models(request: Request) -> ModelsResponse:
 @router.post("/predict", response_model=PredictionResponse)
 async def predict(request: Request, payload: PredictionRequest) -> PredictionResponse:
     registry = request.app.state.registry
+    # Pin the version once and both score and report under it. The response's
+    # model_version names the model that produced the number, so it has to be
+    # the value handed to predict, not a fresh read of the default taken after
+    # inference that a /reload on another worker thread could have moved.
+    version = payload.model_version or registry.default_version
     start = time.perf_counter()
     try:
         # registry.predict() is a synchronous, CPU-bound sklearn call. Running
         # it inline would block the event loop for the duration of inference,
         # so it goes to a worker thread and the route awaits the result.
-        prediction = await asyncio.to_thread(registry.predict, payload.features, payload.model_version)
+        prediction = await asyncio.to_thread(registry.predict, payload.features, version)
     except Exception as exc:
         raise _inference_error(exc) from exc
 
@@ -86,14 +91,13 @@ async def predict(request: Request, payload: PredictionRequest) -> PredictionRes
         # null, so the client would get a 200 with prediction=null and no
         # signal that anything went wrong. Surface it as a server error
         # instead of handing back a silent bad answer.
-        version = payload.model_version or registry.default_version
         logger.error("Model %s produced a non-finite prediction", version)
         raise HTTPException(status_code=500, detail="Model produced a non-finite prediction")
 
     latency_ms = (time.perf_counter() - start) * 1000
     return PredictionResponse(
         prediction=prediction,
-        model_version=payload.model_version or registry.default_version,
+        model_version=version,
         latency_ms=round(latency_ms, 3),
     )
 
@@ -107,9 +111,10 @@ async def predict_batch(request: Request, payload: BatchPredictionRequest) -> Ba
     /predict, and predictions come back in the order the instances were sent.
     """
     registry = request.app.state.registry
+    version = payload.model_version or registry.default_version
     start = time.perf_counter()
     try:
-        predictions = await asyncio.to_thread(registry.predict_batch, payload.instances, payload.model_version)
+        predictions = await asyncio.to_thread(registry.predict_batch, payload.instances, version)
     except Exception as exc:
         raise _inference_error(exc) from exc
 
@@ -117,14 +122,13 @@ async def predict_batch(request: Request, payload: BatchPredictionRequest) -> Ba
         # One bad row would serialize to a JSON null in the middle of the list,
         # a silent wrong answer the caller can't tell from a real one. Fail the
         # whole batch instead, same as the single-prediction path does.
-        version = payload.model_version or registry.default_version
         logger.error("Model %s produced a non-finite prediction in a batch", version)
         raise HTTPException(status_code=500, detail="Model produced a non-finite prediction")
 
     latency_ms = (time.perf_counter() - start) * 1000
     return BatchPredictionResponse(
         predictions=predictions,
-        model_version=payload.model_version or registry.default_version,
+        model_version=version,
         latency_ms=round(latency_ms, 3),
     )
 

@@ -25,6 +25,32 @@ async def test_batch_scores_every_row_in_order(app):
 
 
 @pytest.mark.anyio
+async def test_batch_reports_the_version_it_scored_with(app):
+    # Same contract as /predict: the reported model_version is the version the
+    # batch was scored under, not a second read of the default taken after the
+    # call returns.
+    class RecordingRegistry:
+        default_version = "production"
+
+        def __init__(self) -> None:
+            self.scored_with = "unset"
+
+        def predict_batch(self, instances, version=None):
+            self.scored_with = version
+            return [0.5 for _ in instances]
+
+    recording = RecordingRegistry()
+    app.state.registry = recording
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/predict/batch", json={"instances": [[1.0, 2.0], [3.0, 4.0]]})
+
+    assert resp.status_code == 200
+    assert recording.scored_with == "production"
+    assert resp.json()["model_version"] == recording.scored_with
+
+
+@pytest.mark.anyio
 async def test_batch_single_row_matches_predict(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         one = await client.post("/predict", json={"features": [1.0, 2.0, 3.0, 4.0]})
